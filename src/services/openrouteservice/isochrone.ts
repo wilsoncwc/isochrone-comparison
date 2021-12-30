@@ -2,7 +2,7 @@ import { FeatureCollection } from 'geojson'
 import { OPR_TOKEN, DEFAULT_TIME } from '../../constants'
 import { Isochrone, IsoParams, TravelMode } from '../../types'
 
-const toOPRMode = (mode: TravelMode) => {
+const toOPRMode = (mode: string) => {
   switch (mode) {
   case TravelMode.Walk:
     return 'foot-walking'
