@@ -1,8 +1,8 @@
 export enum TravelMode {
-    Walk = 'walking',
-    Cycle = 'cycling',
-    Drive = 'driving',
-    Transport = 'public_transport'
+  Walk = 'walking',
+  Cycle = 'cycling',
+  Drive = 'driving',
+  Transport = 'public_transport'
 }
 
 export const toOxType = (mode: TravelMode): string => {

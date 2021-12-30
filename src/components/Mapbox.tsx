@@ -1,15 +1,15 @@
 import React, { useRef, useEffect, useState } from 'react'
 import mapboxgl, { GeoJSONSource, LngLatBoundsLike } from 'mapbox-gl' // eslint-disable-line import/no-webpack-loader-syntax
-import { bbox, distance } from '@turf/turf'
+import { bbox } from '@turf/turf'
 import { Box } from '@chakra-ui/react'
 import Gradient from 'javascript-color-gradient'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 import Sidebar from './Sidebar'
-import { LngLat, TravelMode } from '../types'
-import { getIso } from '../services/isoAdaptor'
+import { LngLat } from '../types'
 import { DEFAULT_MODE, DEFAULT_ISO_OPACITY, MAPBOX_TOKEN, MAP_DEFAULT, EMPTY_GEOJSON, DEFAULT_API } from '../constants'
 import { getRoute } from '../services/mapbox/routing'
+import { FeatureCollection } from 'geojson'
 const Mapbox = () => {
   const mapContainer = useRef(null)
   const [map, setMap] = useState<mapboxgl.Map>()
@@ -17,8 +17,10 @@ const Mapbox = () => {
     lng: MAP_DEFAULT.location.lng,
     lat: MAP_DEFAULT.location.lat
   })
-  const [api, setAPI] = useState(DEFAULT_API)
-  const [mode, setMode] = useState<TravelMode>(DEFAULT_MODE)
+  const [params, setParams] = useState({
+    api: DEFAULT_API,
+    mode: (DEFAULT_MODE as string)
+  })
 
   useEffect(() => {
     const container = mapContainer.current
@@ -139,47 +141,53 @@ const Mapbox = () => {
     )
   }
 
-  const getAndSetIso = () => {
-    getIso({
-      center: loc,
-      profile: mode
-    }, api).then(iso => {
-      if (map && iso.geojson) {
-        // Assign colors
-        const colorGradient = new Gradient()
-        colorGradient.setGradient('#502ea8', '#e9446a')
-        colorGradient.setMidpoint(iso.geojson.features.length)
-        const colors = colorGradient.getArray()
-        iso.geojson.features.forEach((feature, index) => {
-          if (feature.properties) {
-            feature.properties['color'] = colors[index]
-            feature.properties['opacity'] = DEFAULT_ISO_OPACITY
-          } 
-        })
-
-        // Set data
-        const src = map.getSource('iso') as GeoJSONSource
-        src.setData(iso.geojson)
-        map.fitBounds(bbox(iso.geojson) as LngLatBoundsLike, {
-          padding: 20
-        })
-      }
-    }).catch(err => {
-      // TODO: Error handling
-      console.log(err)
-    })
-  }
-
   const getRouteOnClick = (map: mapboxgl.Map, coords: LngLat) => {
     if (!map) return
-    getRoute({ mode, src: loc, dst: coords}).then(route => {
+    getRoute({ mode: params.mode, src: loc, dst: coords}).then(route => {
       const src = map.getSource('route') as GeoJSONSource
       console.log(route)
       src.setData(route)
     })
   }
 
-  useEffect(getAndSetIso, [map, loc, mode, api])
+  useEffect(() => {
+    const getAndSetIso = async () => {
+      const url = `/api/isochrone?${new URLSearchParams({
+        payload: JSON.stringify({
+          center: loc,
+          profile: params.mode
+        }),
+        api: params.api
+      })}`
+      const response = await fetch(url)
+      if (!response.ok) {
+        return
+      }
+      const data = await response.json()
+      if (map && data.geojson) {
+        const geojson = data.geojson as FeatureCollection
+        // Assign colors
+        const colorGradient = new Gradient()
+        colorGradient.setGradient('#502ea8', '#e9446a')
+        colorGradient.setMidpoint(geojson.features.length)
+        const colors = colorGradient.getArray()
+        geojson.features.forEach((feature, index) => {
+          if (feature.properties) {
+            feature.properties['color'] = colors[index]
+            feature.properties['opacity'] = DEFAULT_ISO_OPACITY
+          } 
+        })
+  
+        // Set data
+        const src = map.getSource('iso') as GeoJSONSource
+        src.setData(geojson)
+        map.fitBounds(bbox(geojson) as LngLatBoundsLike, {
+          padding: 20
+        })
+      }
+    }
+    getAndSetIso()
+  }, [map, loc, params])
 
   const toggleLayer = (layer: string, callbackOnVisible?: () => void) => {
     if (map) {
@@ -195,8 +203,8 @@ const Mapbox = () => {
     <Box w='100%' h='100%'>
       <Box pos='absolute' p={4} float='left' zIndex={99}>
         <Sidebar
-          onModeChange={setMode}
-          onAPIChange={setAPI}
+          params={params}
+          setParams={setParams}
           toggleIso={() => toggleLayer('isoLayer')}
         />
       </Box>

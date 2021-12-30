@@ -1,9 +1,9 @@
 import { Feature } from 'geojson'
 import { MAPBOX_TOKEN } from '../../constants'
-import { TravelMode, LngLat } from '../../types'
+import { LngLat } from '../../types'
 
 interface RouteParams {
-  mode: TravelMode
+  mode: string
   src: LngLat
   dst: LngLat
 }

@@ -1,4 +1,7 @@
 # Isochrone Comparison
+[![GitHub Super-Linter](https://github.com/wilsoncwc/isochrone-comparison/workflows/Lint/badge.svg)](https://github.com/wilsoncwc/isochrone-comparison/workflows/Lint)
+[![Build and Deploy](https://img.shields.io/github/deployments/wilsoncwc/isochrone-comparison/production?label=vercel&logo=vercel&logoColor=white)](https://github.com/wilsoncwc/isochrone-comparison/deployments/activity_log?environment=Production)
+
 An application for comparing the output shapes of various isochrone services. 
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
