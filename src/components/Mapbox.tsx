@@ -1,16 +1,15 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import mapboxgl, { GeoJSONSource, LngLatBoundsLike } from 'mapbox-gl' // eslint-disable-line import/no-webpack-loader-syntax
-import { bbox } from '@turf/turf'
+import { bbox, distance } from '@turf/turf'
 import { Box } from '@chakra-ui/react'
-import { FeatureCollection } from 'geojson'
+import Gradient from 'javascript-color-gradient'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 import Sidebar from './Sidebar'
 import { LngLat, TravelMode } from '../types'
-import { getIso } from '../services/mapbox'
-import { DEFAULT_MODE, MAPBOX_TOKEN, MAP_DEFAULT, EMPTY_GEOJSON, ROAD_FILTER } from '../constants'
+import { getIso } from '../services/isoAdaptor'
+import { DEFAULT_MODE, DEFAULT_ISO_OPACITY, MAPBOX_TOKEN, MAP_DEFAULT, EMPTY_GEOJSON, DEFAULT_API } from '../constants'
 import { getRoute } from '../services/mapbox/routing'
-
 const Mapbox = () => {
   const mapContainer = useRef(null)
   const [map, setMap] = useState<mapboxgl.Map>()
@@ -18,6 +17,7 @@ const Mapbox = () => {
     lng: MAP_DEFAULT.location.lng,
     lat: MAP_DEFAULT.location.lat
   })
+  const [api, setAPI] = useState(DEFAULT_API)
   const [mode, setMode] = useState<TravelMode>(DEFAULT_MODE)
 
   useEffect(() => {
@@ -60,8 +60,8 @@ const Mapbox = () => {
       marker.setLngLat(lngLat)
       setLoc(lngLat)
     })
-    mapbox.addControl(geolocate)
-    mapbox.addControl(new mapboxgl.NavigationControl())
+    mapbox.addControl(geolocate, 'bottom-right')
+    mapbox.addControl(new mapboxgl.NavigationControl(), 'bottom-right')
 
     // Map Events
     mapbox.on('load', () => {
@@ -81,17 +81,6 @@ const Mapbox = () => {
           visibility: 'visible'
         }
       })
-      // Road vector data layer
-      addLayer(mapbox, 'road', 'line', {
-        paint: {
-          'line-color': '#2D3748',
-          'line-width': 1
-        },
-        layout: {
-          'line-join': 'round',
-          visibility: 'none'
-        }
-      })
       addLayer(mapbox, 'route', 'line', {
         paint: {
           'line-color': '#805AD5',
@@ -109,7 +98,10 @@ const Mapbox = () => {
         source: 'route',
         layout: {
           'symbol-placement': 'line',
-          'text-field': '{label}'
+          'text-field': '{label}',
+          'text-radial-offset': 0.5,
+          'text-justify': 'auto',
+          'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
         }
       })
       setMap(mapbox)
@@ -151,81 +143,43 @@ const Mapbox = () => {
     getIso({
       center: loc,
       profile: mode
-    }).then(iso => {
+    }, api).then(iso => {
       if (map && iso.geojson) {
+        // Assign colors
+        const colorGradient = new Gradient()
+        colorGradient.setGradient('#502ea8', '#e9446a')
+        colorGradient.setMidpoint(iso.geojson.features.length)
+        const colors = colorGradient.getArray()
+        iso.geojson.features.forEach((feature, index) => {
+          if (feature.properties) {
+            feature.properties['color'] = colors[index]
+            feature.properties['opacity'] = DEFAULT_ISO_OPACITY
+          } 
+        })
+
+        // Set data
         const src = map.getSource('iso') as GeoJSONSource
         src.setData(iso.geojson)
         map.fitBounds(bbox(iso.geojson) as LngLatBoundsLike, {
           padding: 20
         })
-
-        // Set road network color to that of the containing isochrone
-        const sortedIsoPolys = iso.geojson.features.slice().reverse()
-        const isochroneIntersectColor = sortedIsoPolys.flatMap(isochrone => 
-          [['within', isochrone], isochrone.properties?.color])
-        const roadColorCaseRule = ['case', ...isochroneIntersectColor, '#2D3748']
-        map.setPaintProperty('roadLayer', 'line-color', roadColorCaseRule)
       }
+    }).catch(err => {
+      // TODO: Error handling
+      console.log(err)
     })
-  }
-
-  const getRoadVect = (mapbox = map) => {
-    if (mapbox) {
-      const roadData = mapbox.querySourceFeatures('composite', { 
-        sourceLayer: 'road',
-        filter: ['all',
-          ['!', ['in', ['get', 'class'], ['literal', ROAD_FILTER]]],
-        ]
-      })
-      const src = mapbox.getSource('road') as GeoJSONSource
-      const roads: FeatureCollection = {
-        type: 'FeatureCollection',
-        features: roadData.flatMap(feature => {
-          switch (feature.geometry.type) {
-          case 'MultiLineString':
-            return feature.geometry.coordinates.map(coords => ({
-              type: 'Feature',
-              geometry: {
-                type: 'LineString',
-                coordinates: coords
-              },
-              properties: feature.properties
-            }))
-          case 'LineString':
-            return [{
-              type: 'Feature',
-              geometry: feature.geometry,
-              properties: feature.properties
-            }]
-          default:
-            return []
-          }
-        })
-      }
-      console.log(roads)
-      src.setData(roads)
-      // getVector({
-      //   tileset: 'mapbox.mapbox-streets-v8',
-      //   bounds,
-      //   layer: 'road'
-      // }).then(data => {
-      //   console.log(data)
-      //   const src = map.getSource('road') as GeoJSONSource
-      //   // const classifiedData = iso ? matchRoadsToIso(data as FeatureCollection, iso) : data
-      //   src.setData(data)
-      // })
-    }
   }
 
   const getRouteOnClick = (map: mapboxgl.Map, coords: LngLat) => {
     if (!map) return
     getRoute({ mode, src: loc, dst: coords}).then(route => {
       const src = map.getSource('route') as GeoJSONSource
+      console.log(route)
       src.setData(route)
     })
   }
 
-  useEffect(getAndSetIso, [map, loc, mode])
+  useEffect(getAndSetIso, [map, loc, mode, api])
 
   const toggleLayer = (layer: string, callbackOnVisible?: () => void) => {
     if (map) {
@@ -242,7 +196,7 @@ const Mapbox = () => {
       <Box pos='absolute' p={4} float='left' zIndex={99}>
         <Sidebar
           onModeChange={setMode}
-          toggleRoad={() => toggleLayer('roadLayer', getRoadVect)}
+          onAPIChange={setAPI}
           toggleIso={() => toggleLayer('isoLayer')}
         />
       </Box>
